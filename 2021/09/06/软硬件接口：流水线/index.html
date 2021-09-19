@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 5.4.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/PersonalBlog/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/PersonalBlog/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/PersonalBlog/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/PersonalBlog/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/PersonalBlog/css/main.css">
+
+<link rel="stylesheet" href="//fonts.googleapis.com/css?family=Monda:300,300italic,400,400italic,700,700italic&display=swap&subset=latin,latin-ext">
+<link rel="stylesheet" href="/PersonalBlog/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"liuerhei.github.io","root":"/PersonalBlog/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"right","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":true},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="背景这篇文章以MPIS指令集为基础，通过分析算数计算、数据传送和分支等指令，形成一个逻辑的数据通路。同时尝试构建一条简单的流水线，提升IPC。 逻辑设计考虑计算机的设计，就必须决定机器的逻辑设计和时钟。机器的数据通路部件中主要包含两种不同的逻辑单元：组合单元和状态单元。前者是计算单元，输出仅取决于当前的输入，如ALU等。后者是存储单元，用于保存状态，如寄存器或存储器。 一般采用沿边沿触发的方式来保">
+<meta property="og:type" content="article">
+<meta property="og:title" content="软硬件接口:流水线">
+<meta property="og:url" content="https://liuerhei.github.io/PersonalBlog/2021/09/06/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3%EF%BC%9A%E6%B5%81%E6%B0%B4%E7%BA%BF/index.html">
+<meta property="og:site_name" content="Jonthan&#39;s blog">
+<meta property="og:description" content="背景这篇文章以MPIS指令集为基础，通过分析算数计算、数据传送和分支等指令，形成一个逻辑的数据通路。同时尝试构建一条简单的流水线，提升IPC。 逻辑设计考虑计算机的设计，就必须决定机器的逻辑设计和时钟。机器的数据通路部件中主要包含两种不同的逻辑单元：组合单元和状态单元。前者是计算单元，输出仅取决于当前的输入，如ALU等。后者是存储单元，用于保存状态，如寄存器或存储器。 一般采用沿边沿触发的方式来保">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://liuerhei.github.io/PersonalBlog/2021/09/06/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3%EF%BC%9A%E6%B5%81%E6%B0%B4%E7%BA%BF/simplePipeline.jpg">
+<meta property="og:image" content="https://liuerhei.github.io/PersonalBlog/2021/09/06/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3%EF%BC%9A%E6%B5%81%E6%B0%B4%E7%BA%BF/totalPipeline.jpg">
+<meta property="article:published_time" content="2021-09-06T13:02:42.000Z">
+<meta property="article:modified_time" content="2021-09-19T03:07:27.000Z">
+<meta property="article:author" content="Jonathan">
+<meta property="article:tag" content="Compute Architecture">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://liuerhei.github.io/PersonalBlog/2021/09/06/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3%EF%BC%9A%E6%B5%81%E6%B0%B4%E7%BA%BF/simplePipeline.jpg">
+
+<link rel="canonical" href="https://liuerhei.github.io/PersonalBlog/2021/09/06/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3%EF%BC%9A%E6%B5%81%E6%B0%B4%E7%BA%BF/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>软硬件接口:流水线 | Jonthan's blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/PersonalBlog/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">Jonthan's blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/PersonalBlog/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/PersonalBlog/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/PersonalBlog/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://liuerhei.github.io/PersonalBlog/2021/09/06/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3%EF%BC%9A%E6%B5%81%E6%B0%B4%E7%BA%BF/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/PersonalBlog/images/avatar.gif">
+      <meta itemprop="name" content="Jonathan">
+      <meta itemprop="description" content="Learning, recording and sharing">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="Jonthan's blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          软硬件接口:流水线
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2021-09-06 21:02:42" itemprop="dateCreated datePublished" datetime="2021-09-06T21:02:42+08:00">2021-09-06</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2021-09-19 11:07:27" itemprop="dateModified" datetime="2021-09-19T11:07:27+08:00">2021-09-19</time>
+              </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h2 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h2><p>这篇文章以MPIS指令集为基础，通过分析算数计算、数据传送和分支等指令，形成一个逻辑的数据通路。同时尝试构建一条简单的流水线，提升IPC。</p>
+<h3 id="逻辑设计"><a href="#逻辑设计" class="headerlink" title="逻辑设计"></a>逻辑设计</h3><p>考虑计算机的设计，就必须决定机器的逻辑设计和时钟。机器的数据通路部件中主要包含两种不同的逻辑单元：组合单元和状态单元。前者是计算单元，输出仅取决于当前的输入，如ALU等。后者是存储单元，用于保存状态，如寄存器或存储器。</p>
+<p>一般采用沿边沿触发的方式来保证数据通路的时序，即时序逻辑单元中存储的所有值都只允许在时钟跳变的边沿时改变。</p>
+<h3 id="一个简单的数据通路"><a href="#一个简单的数据通路" class="headerlink" title="一个简单的数据通路"></a>一个简单的数据通路</h3><p>一个典型的数据通路包含以下几个组件：程序计数器、指令存储器、加法器、ALU、寄存器堆、数据存储单元、符号扩展单元。</p>
+<p>整个通路可以完成常用的数据传送指令、算数计算指令和分支跳转指令。中心控制单元根据指令类型和操作码解析出相应的控制信号，包括ALU的控制码、寄存器堆的写入信号、存储单元的读写信号及分支指令等。</p>
+<p>至此，一个单周期设计的数据通路已经成型。</p>
+<p><img src="simplePipeline.jpg" alt="单周期的数据通路"></p>
+<h2 id="流水线"><a href="#流水线" class="headerlink" title="流水线"></a>流水线</h2><h3 id="为什么引入流水线"><a href="#为什么引入流水线" class="headerlink" title="为什么引入流水线"></a>为什么引入流水线</h3><p>如果每条指令都在一个指令周期内完成，那么CPI就是1。这个值非常理想，但这种模式下指令周期取决于耗时最长的指令，这对于其他指令而言显然是不合理的。这会造成数据通路上部分部件的空闲，所以流水线的方案就出现了。</p>
+<h3 id="一个简单的流水线"><a href="#一个简单的流水线" class="headerlink" title="一个简单的流水线"></a>一个简单的流水线</h3><p>流水线简单的说就是将每个指令切割成若干个操作，每个操作对应着一个时钟周期。这样每个时钟周期内可以执行指令的一部分，有多少个操作理论上就可以同时运行多少条指令。但由于数据通路的各部件同时执行不同的指令，所以需要引入状态单元来记录每个指令的状态，所以需要引入流水线寄存器。</p>
+<p>一般讲流水线分为取址、译码、执行、访存和写回五个阶段。阶段之间使用流水线寄存器保存组合逻辑的执行结果。由于数据通路是沿上升沿触发的，所以写回阶段不需要额外的寄存器来保存状态，直接通过控制信号完成操作。</p>
+<p>数据传送指令和算数计算指令在流水线中的执行很容易映射，就不再赘述。这里单独分析下分支跳转指令。</p>
+<table>
+<thead>
+<tr>
+<th>31:26</th>
+<th>25:21</th>
+<th>20:16</th>
+<th>15: 0</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>4</td>
+<td>rs</td>
+<td>rt</td>
+<td>Addr</td>
+</tr>
+</tbody></table>
+<p>寄存器堆中读出rs和rt的值，然后ALUSrc取0，ALU比较两个值后设置零标志位。地址加法器会将低16位左移2位后与+4后的PC地址相加，计算出跳转后的地址。左移2位是为了4字节对齐。同时控制信号根据指令码置位Branch，根据ALU的零标志位相与后决定PC更新逻辑。</p>
+<p>结合分支跳转指令的执行过程我们可以发现，跳转地址和两个寄存器值的比较同时发生，并且根据比较结果和Branch控制信号一起决定PC的更新。这样一来PC的更新需要到访存阶段才可以决定，这会影响影响流水线后面的指令。后面会针对这个进行优化（待补充链接）。</p>
+<h2 id="流水线冒险"><a href="#流水线冒险" class="headerlink" title="流水线冒险"></a>流水线冒险</h2><p>流水线的引入大大提升了IPC，虽然会增加一些延迟，但是整体指令的处理速度却得到了极大提升。但流水线中存在一种情况，在下一个时钟周期下一条指令无法执行，这就是流水线冒险。</p>
+<h3 id="结构冒险"><a href="#结构冒险" class="headerlink" title="结构冒险"></a>结构冒险</h3><p>结构冒险即硬件不支持多条指令在同一个时钟周期执行。也就是说因缺乏硬件支持导致指令不能再预定的时钟周期内执行。</p>
+<h3 id="数据冒险"><a href="#数据冒险" class="headerlink" title="数据冒险"></a>数据冒险</h3><p>数据冒险即因无法提供指令执行所需数据而导致指令不能在预定的时钟周期内完成。数据冒险一般由编译器和硬件一起来规避，编译器可以通过调整无关指令的执行顺序来避免，硬件设计可以通过旁路来加快数据获取过程。如果旁路也无法解决数据依赖的话，就需要阻塞流水线，也就是插入气泡。</p>
+<h3 id="控制冒险"><a href="#控制冒险" class="headerlink" title="控制冒险"></a>控制冒险</h3><p>也称为分支冒险，即取到的指令不是所需要的倒置指令不能在预定的时钟周期内完成。<br>如单周期的数据通路中所示，只有在访存阶段才可以判断是否发生控制冒险。这个代价太大了，所以需要将PC计算部件放置在译码阶段，从而降低因控制冒险带来的速度下降。<br>对于控制冒险来说，除了阻塞方案外，还可以基于预测来处理。通过正确预测分支的结果来保证流水线的处理速度。当预测错误时，需要丢弃分支后执行的指令。</p>
+<h2 id="流水线小结"><a href="#流水线小结" class="headerlink" title="流水线小结"></a>流水线小结</h2><p><img src="totalPipeline.jpg" alt="指令流水线"></p>
+<p>上图是一个流水线的示意图，和数据通路比，增加了流水线寄存器、控制单元、冒险检测单元和异常处理。接下来分别进行分析。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/PersonalBlog/tags/Compute-Architecture/" rel="tag"># Compute Architecture</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/PersonalBlog/2021/09/06/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3/" rel="prev" title="软硬件接口">
+      <i class="fa fa-chevron-left"></i> 软硬件接口
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%83%8C%E6%99%AF"><span class="nav-number">1.</span> <span class="nav-text">背景</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E9%80%BB%E8%BE%91%E8%AE%BE%E8%AE%A1"><span class="nav-number">1.1.</span> <span class="nav-text">逻辑设计</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%80%E4%B8%AA%E7%AE%80%E5%8D%95%E7%9A%84%E6%95%B0%E6%8D%AE%E9%80%9A%E8%B7%AF"><span class="nav-number">1.2.</span> <span class="nav-text">一个简单的数据通路</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%B5%81%E6%B0%B4%E7%BA%BF"><span class="nav-number">2.</span> <span class="nav-text">流水线</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%BA%E4%BB%80%E4%B9%88%E5%BC%95%E5%85%A5%E6%B5%81%E6%B0%B4%E7%BA%BF"><span class="nav-number">2.1.</span> <span class="nav-text">为什么引入流水线</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%80%E4%B8%AA%E7%AE%80%E5%8D%95%E7%9A%84%E6%B5%81%E6%B0%B4%E7%BA%BF"><span class="nav-number">2.2.</span> <span class="nav-text">一个简单的流水线</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%86%92%E9%99%A9"><span class="nav-number">3.</span> <span class="nav-text">流水线冒险</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%BB%93%E6%9E%84%E5%86%92%E9%99%A9"><span class="nav-number">3.1.</span> <span class="nav-text">结构冒险</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%95%B0%E6%8D%AE%E5%86%92%E9%99%A9"><span class="nav-number">3.2.</span> <span class="nav-text">数据冒险</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%8E%A7%E5%88%B6%E5%86%92%E9%99%A9"><span class="nav-number">3.3.</span> <span class="nav-text">控制冒险</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93"><span class="nav-number">4.</span> <span class="nav-text">流水线小结</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">Jonathan</p>
+  <div class="site-description" itemprop="description">Learning, recording and sharing</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/PersonalBlog/archives/">
+        
+          <span class="site-state-item-count">2</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-tags">
+        <span class="site-state-item-count">1</span>
+        <span class="site-state-item-name">标签</span>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2021</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">Jonathan</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/PersonalBlog/lib/anime.min.js"></script>
+  <script src="/PersonalBlog/lib/velocity/velocity.min.js"></script>
+  <script src="/PersonalBlog/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/PersonalBlog/js/utils.js"></script>
+
+<script src="/PersonalBlog/js/motion.js"></script>
+
+
+<script src="/PersonalBlog/js/schemes/pisces.js"></script>
+
+
+<script src="/PersonalBlog/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>
