@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 5.4.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/PersonalBlog/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/PersonalBlog/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/PersonalBlog/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/PersonalBlog/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/PersonalBlog/css/main.css">
+
+<link rel="stylesheet" href="//fonts.googleapis.com/css?family=Monda:300,300italic,400,400italic,700,700italic&display=swap&subset=latin,latin-ext">
+<link rel="stylesheet" href="/PersonalBlog/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"liuerhei.github.io","root":"/PersonalBlog/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"right","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":true},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="聊到《软硬件接口》，流水线就不得不提。作为实现指令级并行的一种方式，流水线通过复用硬件部件来增加指令的吞吐，在计算机系统结构中发挥着巨大作用。通过切分执行指令的步骤，可以实现多级流水，尽可能挖掘指令级并行的可能。五级流水线是经典流水线之一，本文在后来者的视角，以MIPS指令集的五级流水线为例，尝试分析流水线设计中遇到的结构冒险、数据冒险及控制冒险等问题及解决方案。希望那个可以通过学习流水线的基本原">
+<meta property="og:type" content="article">
+<meta property="og:title" content="软硬件接口: 流水线小结">
+<meta property="og:url" content="https://liuerhei.github.io/PersonalBlog/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/index.html">
+<meta property="og:site_name" content="Jonthan&#39;s blog">
+<meta property="og:description" content="聊到《软硬件接口》，流水线就不得不提。作为实现指令级并行的一种方式，流水线通过复用硬件部件来增加指令的吞吐，在计算机系统结构中发挥着巨大作用。通过切分执行指令的步骤，可以实现多级流水，尽可能挖掘指令级并行的可能。五级流水线是经典流水线之一，本文在后来者的视角，以MIPS指令集的五级流水线为例，尝试分析流水线设计中遇到的结构冒险、数据冒险及控制冒险等问题及解决方案。希望那个可以通过学习流水线的基本原">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://liuerhei.github.io/PersonalBlog/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/%E6%B5%81%E6%B0%B4%E7%BA%BF%E9%80%9A%E8%B7%AF-205.jpg">
+<meta property="og:image" content="https://liuerhei.github.io/PersonalBlog/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/%E6%95%B0%E6%8D%AE%E5%86%92%E9%99%A9%E9%80%9A%E8%B7%AF-211.jpg">
+<meta property="og:image" content="https://liuerhei.github.io/PersonalBlog/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/%E6%95%B0%E6%8D%AE%E5%86%92%E9%99%A9%E9%80%9A%E8%B7%AF-214.jpg">
+<meta property="article:published_time" content="2021-09-20T03:10:38.000Z">
+<meta property="article:modified_time" content="2021-09-21T07:12:14.000Z">
+<meta property="article:author" content="Jonathan">
+<meta property="article:tag" content="Computer Architecture">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://liuerhei.github.io/PersonalBlog/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/%E6%B5%81%E6%B0%B4%E7%BA%BF%E9%80%9A%E8%B7%AF-205.jpg">
+
+<link rel="canonical" href="https://liuerhei.github.io/PersonalBlog/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>软硬件接口: 流水线小结 | Jonthan's blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/PersonalBlog/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">Jonthan's blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/PersonalBlog/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/PersonalBlog/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/PersonalBlog/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://liuerhei.github.io/PersonalBlog/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/PersonalBlog/images/avatar.gif">
+      <meta itemprop="name" content="Jonathan">
+      <meta itemprop="description" content="Learning, recording and sharing">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="Jonthan's blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          软硬件接口: 流水线小结
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2021-09-20 11:10:38" itemprop="dateCreated datePublished" datetime="2021-09-20T11:10:38+08:00">2021-09-20</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2021-09-21 15:12:14" itemprop="dateModified" datetime="2021-09-21T15:12:14+08:00">2021-09-21</time>
+              </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/PersonalBlog/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/PersonalBlog/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  <br>
+            <span class="post-meta-item" title="本文字数">
+              <span class="post-meta-item-icon">
+                <i class="far fa-file-word"></i>
+              </span>
+                <span class="post-meta-item-text">本文字数：</span>
+              <span>2.5k</span>
+            </span>
+            <span class="post-meta-item" title="阅读时长">
+              <span class="post-meta-item-icon">
+                <i class="far fa-clock"></i>
+              </span>
+                <span class="post-meta-item-text">阅读时长 &asymp;</span>
+              <span>2 分钟</span>
+            </span>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>聊到《软硬件接口》，流水线就不得不提。作为实现指令级并行的一种方式，流水线通过复用硬件部件来增加指令的吞吐，在计算机系统结构中发挥着巨大作用。通过切分执行指令的步骤，可以实现多级流水，尽可能挖掘指令级并行的可能。五级流水线是经典流水线之一，本文在后来者的视角，以MIPS指令集的五级流水线为例，尝试分析流水线设计中遇到的结构冒险、数据冒险及控制冒险等问题及解决方案。希望那个可以通过学习流水线的基本原理，对计算机的了解更进一步，学习过程中难免有不到之处，如有错误，欢迎评论区指正。</p>
+<span id="more"></span>
+
+<h2 id="流水线简介"><a href="#流水线简介" class="headerlink" title="流水线简介"></a>流水线简介</h2><blockquote>
+<p>流水线是一种实现多条指令重叠执行的技术。</p>
+</blockquote>
+<p>日常生活中很多地方都在使用流水线技术，制造业的工厂、洗衣店、食堂打菜等等。流水线并没有加快单个流程的处理速。与之相反的，流水线的引入可能还会增加单个流程的处理时间。但流水线可以提升多个流程的平均处理速度，对于N级流水线来说，每一个阶段都可以新开启一个流程，最多可以同时运行N个流程。以5级流水线为例，4条指令的时间从串形的20单位时间降低为8单位时间。</p>
+<blockquote>
+<p>五级流水线一般分为以下五部分：</p>
+<ul>
+<li>取指：从指令存储器中读取指令</li>
+<li>译码：指令译码的同时读取寄存器</li>
+<li>执行：执行操作或进行地址计算</li>
+<li>访存：从数据存储器中读取数据</li>
+<li>写回：将结果写回寄存器</li>
+</ul>
+</blockquote>
+<p>为了简化问题，本文仅考虑取字(lw)、存字(sw)、加(add)、减(sub)、与(And)、或(or)、小于则置位(slt)和相等则分支(beq)。由于流水线复用数据通路中的各个部件，因此每个阶段需要流水线寄存器保留结果和相关的控制信号。例如译码／执行（ID/EX）寄存器需要保存数据存储的读写信号、是否写回寄存器堆等信号（后面会详细讲解流水线寄存器中的控制信号）。所以每条指令的中间结果和相关信息都随着指令执行阶段在流水线寄存器中依次传递。下图是支持流水线的数据通路，后面基于此进行分析。</p>
+<img src="/PersonalBlog/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/%E6%B5%81%E6%B0%B4%E7%BA%BF%E9%80%9A%E8%B7%AF-205.jpg" class="" title="五级流水线示意图，流水线后三级的控制信号是在译码阶段创建的，然后放入ID&#x2F;EX流水线寄存器">
+
+<h2 id="流水线冒险：结构冒险"><a href="#流水线冒险：结构冒险" class="headerlink" title="流水线冒险：结构冒险"></a>流水线冒险：结构冒险</h2><p>我们熟知的流水线冒险有数据冒险和控制冒险，但结果冒险也是一种流水线冒险。如果数据通路中指令存储和数据存储共用一个通道，那么在第四个时钟周期就会发生结构冒险：第一条指令需要访存，第四条指令需要取指令。</p>
+<blockquote>
+<p>结构冒险：因缺乏硬件支持而导致指令不能在预定的时钟周期内执行的情况。</p>
+</blockquote>
+<p>在实际场景中，很多指令集是面向流水线设计的，因此设计流水线时能比较容易地规避结构冒险。</p>
+<h2 id="流水线冒险：数据冒险"><a href="#流水线冒险：数据冒险" class="headerlink" title="流水线冒险：数据冒险"></a>流水线冒险：数据冒险</h2><blockquote>
+<p>数据冒险：因无法提供指令执行需要的数据而导致指令不能在预定的时钟周期内完成。<br>虽然编译器可以解决一部分的数据冒险，比如调整无关的指令顺序等，但最基本的解法是旁路。即通过内部寄存器提前获取数据，该寄存器对程序员不可见。</p>
+</blockquote>
+<h3 id="数据冒险：旁路"><a href="#数据冒险：旁路" class="headerlink" title="数据冒险：旁路"></a>数据冒险：旁路</h3><figure class="highlight plaintext"><figcaption><span>数据冒险例子</span></figcaption><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">sub $2, $1, $3</span><br><span class="line">and $12, $2, $5</span><br><span class="line">or $13, $6, $2</span><br><span class="line">add $14, $2, $2</span><br><span class="line">sw $15, 100($2)</span><br></pre></td></tr></table></figure>
+
+<p>这里第一条指令的会在写回阶段更新$2寄存器，而第二条指令在译码阶段会读取$2寄存器，因此会发生数据冒险。后面也有指令会发生数据冒险。这里我们仅讨论直接传送EX段产生的数据，来分析下发生数据冒险的情况。我们使用流水线寄存器字段和寄存器名称来表示。有如下几种数据冒险的条件：</p>
+<ul>
+<li>1.1 EX/MEM.RegisterRd = ID/EX.RegisterRs</li>
+<li>1.2 EX/MEM.RegisterRd = ID/EX.RegisterRt</li>
+<li>2.1 MEM/WB.RegisterRd = ID/EX.RegisterRs</li>
+<li>2.2 MEM/WB.RegisterRd = ID/EX.RegisterRt</li>
+</ul>
+<p>对于上面提到的第一条和第二条指令关于$2寄存器的数据冒险符合1.1条件。$2寄存器是sub指令的EX阶段的目标寄存器，同时是and指令在EX阶段需要使用的源寄存器。对于sub指令来说，EX段后$2寄存器的内容就已经在寄存器中了，如果我们新建一条数据通路，EX段ALU的源操作数可以直接数据通路中获取，那么1.1的数据冒险就可以解决。这就需要引入旁路控制单元。</p>
+<img src="/PersonalBlog/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/%E6%95%B0%E6%8D%AE%E5%86%92%E9%99%A9%E9%80%9A%E8%B7%AF-211.jpg" class="" title="通过旁路解决数据冒险的通路，旁路单元通过各个流水线寄存器生成ALU输入的多路选择器信号">
+<!-- <img class="[class names] 简易流水线通路-205.jpg [width] [height] &quot;图片测试&quot; &quot;简单流水线通路&quot;"> -->
+<p>在构建新的数据通路基础上，如上图所示。旁路控制单元通过检测数据冒险的条件，并生成相关的控制码（主要是决策数据从何处获取），进而解决部分数据冒险。例如针对EX冒险，可以通过下述代码来实现：</p>
+<figure class="highlight plaintext"><figcaption><span>旁路单元检测EX段数据冒险</span></figcaption><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">if (EX/MEM.RegWrite and (EX/MEM.RegisterRd ≠ 0)</span><br><span class="line">and (EX/MEM.RegisterRd = ID/EX.RegisterRs))</span><br><span class="line">FowardA = 10</span><br><span class="line"></span><br><span class="line">if (EX/MEM.RegWrite and (EX/MEM.RegisterRd ≠ 0)</span><br><span class="line">and (EX/MEM.RegisterRd = ID/EX.RegisterRt))</span><br><span class="line">FowardB = 10</span><br></pre></td></tr></table></figure>
+
+<p>这里我们回到上面的例子。假设在第一个时钟周期执行sub指令，在第四个时钟周期，旁路单元检测到数据冒险。此时旁路控制单元将FowardA置为10，即图中ALU上方的多选器选择ALU的输出结果。通过旁路快速将sub指令的结果传送至ALU的输入。</p>
+<h3 id="数据冒险：阻塞"><a href="#数据冒险：阻塞" class="headerlink" title="数据冒险：阻塞"></a>数据冒险：阻塞</h3><blockquote>
+<p>流水线有这样一种情况，在下一个时钟周期中下一条指令不能执行，这就是流水线冒险。如果遇到无法解决的冒险，需要阻塞流水线，也就是插入气泡。</p>
+</blockquote>
+<p>当一条指令试图读取上条装载指令读入的寄存器时，就无法使用旁路解决冒险了。这就需要冒险检测单元来阻塞流水线，它工作在ID级，这样就可以在装载指令译码阶段插入气泡，避免数据冒险。检测条件如下：</p>
+<figure class="highlight plaintext"><figcaption><span>冒险检测单元</span></figcaption><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">if (ID/EX.MemRead and （(ID/EX.RegisterRt = IF/ID.RegisterRs) or</span><br><span class="line">(ID/EX.RegisterRt = IF/ID.RegisterRt))</span><br><span class="line">stall the pipeline</span><br></pre></td></tr></table></figure>
+
+<p>插入气泡相当于流水线空转，但实际上流水线的部件仍在执行，只不过不保存结果，也不更新PC。前者仅需要将ID/EX流水线寄存器的EX、MEM和WB级的控制信号全部置为0，这样所有寄存器和存储器都不进行写操作，不会产生不良结果。后者需要保持PC和IF/ID寄存器，这样后续执行的仍是当前指令。加入冒险检测单元的流水线示意图如下所示。</p>
+<blockquote>
+<p>实际上，如果需要阻塞流水线的话，仅需要将ID/EX流水线寄存器中的RegWrite和MemWrite信号置为0就可以。</p>
+</blockquote>
+<p><img src="/PersonalBlog/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/%E6%95%B0%E6%8D%AE%E5%86%92%E9%99%A9%E9%80%9A%E8%B7%AF-214.jpg" class="" title="数据冒险通路示意图，在旁路的基础上，新增冒险检测单元（此处省略了立即数符号扩展和分支逻辑）}&lt;&#x2F;p&gt; &lt;h2 id&#x3D;流水线冒险：控制冒险&gt;&lt;a href&#x3D;#流水线冒险：控制冒险 class&#x3D;headerlink title&#x3D;流水线冒险：控制冒险&gt;&lt;&#x2F;a&gt;流水线冒险：控制冒险&lt;&#x2F;h2&gt;&lt;blockquote&gt; &lt;p&gt;控制冒险，也称为分支冒险，即取到的指令不是所需要的导致指令不能在预定的时钟周期内完成。&lt;br&gt;控制冒险相对容易理解，它们出现的概率要比数据冒险小的多，并且与采用旁路可以有效解决数据冒险相比，还没有有效办法可以解决控制冒险。对于控制冒险来说，首先需要缩短分支的延迟，所以需要将分支地址计算从EX级移到ID级。同时增加相等判断部件，例如将两个输入进行异或后各位取或。由于判断分支条件的操作数可能来自于EX&#x2F;MEM或MEM&#x2F;WB流水线寄存器。因此前置分支地址计算需要额外的旁路，同时数据可能在后面的阶段产生，因此可能存在数据冒险，需要阻塞流水线。优化后的流水线示意图如下所示。&lt;&#x2F;p&gt; &lt;&#x2F;blockquote&gt; &lt;p&gt;{% asset_img 流水线通路-220.jpg 最终的数据通路和控制逻辑图，没有额外标记ALUsrc等信息}&lt;&#x2F;p&gt; &lt;h3 id&#x3D;动态分支预测&gt;&lt;a href&#x3D;#动态分支预测 class&#x3D;headerlink title&#x3D;动态分支预测&gt;&lt;&#x2F;a&gt;动态分支预测&lt;&#x2F;h3&gt;&lt;p&gt;上述方案可以适当缩短分支的延迟，将分支预测错误的代价缩短到只有一条指令，就是分支执行时正在取的那条指令。除了缩短延迟外，可以在分支预测上做一些文章，例如预测分支结果。当预测正确时，可以有效提升流水线的效率，不过错误时需要清空流水线。对于更深的流水线来说，清空流水线代价比较大，多发射的分支代价也比较大。此外，编译器可以做分支预测，例如分支延迟时间槽，但随着流水线深度的增加和多发射技术的发展，延迟槽会带来一定的性能性能。所以可以引入新的硬件来支持。&lt;&#x2F;p&gt; &lt;blockquote&gt; &lt;p&gt;一种策略是通过查找指令的地址观察上一次执行该指令时分支是否发生，如果上次执行时分支发生，就从上次分支发生的地方开始取新指令，这就是动态分支预测。&lt;&#x2F;p&gt; &lt;&#x2F;blockquote&gt; &lt;p&gt;分支预测缓存就是动态分支预测的一种实现方法，通过使用在IF级指令地址能否访问的小容量专用缓存实现，按照分支的地址地位索引，包含一位或多位数据来记录最近是否发生过分支。这里以两位预测来举例，如果分支跳转，那么预测位加一，反之减一。所以如果高位为1，预测分支发生，如果高位为0，预测分支不发生。这种方案一般称为饱和计数或者双模态预测器。&lt;&#x2F;p&gt; &lt;p&gt;饱和计数方案存在一定的局限性，例如一个分支指令每两次执行跳转一次，那将会一直预测不跳转。所以Yale Patt在90年代提出了自适应预测，简单的说就是变成两级饱和计数。第一级是分支历史情况，第二级是模式历史表。分支历史情况同时也是模式历史表的索引，所以对于每两次跳转一次的分支来说，01在发生两次后就会被预测为跳转，同理00和10也会被预测为不跳转。关于分支跳转指令具体可以参考&lt;a href&#x3D;https:&#x2F;&#x2F;zh.wikipedia.org&#x2F;wiki&#x2F;%E5%88%86%E6%94%AF%E9%A0%90%E6%B8%AC%E5%99%A8&gt;链接&lt;&#x2F;a&gt;&lt;&#x2F;p&gt; &lt;h2 id&#x3D;异常&gt;&lt;a href&#x3D;#异常 class&#x3D;headerlink title&#x3D;异常&gt;&lt;&#x2F;a&gt;异常&lt;&#x2F;h2&gt;&lt;p&gt;在控制冒险中我们讨论了分支，此外还有异常和中断。在x86中异常和中断统一称为中断，不过有些体系结构将控制流中任何意外的改变成为异常，将外部引起的称为中断。对于异常的处理，一般通过异常程序计数器（EPC）保存异常指令的地址，然后将控制权交给操作系统，操作系统从EPC中获取指令地址，通过状态寄存器来获取异常原因并执行相关操作，操作完成后可以决定继续执行还是结束程序。另外一种方法是向量中断，针对不同的异常定义不同的向量地址，出现异常时将控制权被转移到有异常原因决定的地址处。&lt;&#x2F;p&gt; &lt;p&gt;实际上，异常可以看作是另一种形式的控制冒险。如果产生异常，我们也需要阻塞流水线，所以控制单元新增ID.flush信号，和冒险检测单元的输出相或决定是否ID级指令。此外新增EX.flush来清理EX级指令。这里我们假设使用状态寄存器来处理异常，异常处理地址是80000180&lt;sub&gt;16，所以PC的多选器新增异常处理地址的输入。下图是调整后的数据通路。如果指令在执行阶段发生溢出触发异常，那么控制单元生成EX.flush信号避免指令在WB段将结果写回寄存器堆。&lt;&#x2F;p&gt; &lt;p&gt;&lt;asset_img 异常流水线通路-223.jpg 处理异常的数据通路和控制逻辑图。新增刷新信号和PC多选器输入，图中未标明ALU溢出信号，其也为控制单元的输入。&gt;&lt;&#x2F;p&gt; &lt;p&gt;硬件和操作系统协同才可以正确处理异常，如果流水线中的多条指令同时触发异常，会根据优先级依次处理，这里就不展开讨论。异常处理一般是由硬件暂停触发异常的指令，同时执行完该指令前的所有指令，清楚该指令后的所有指令，并设置状态寄存器，指令地址保存在EPC中，跳转到异常处理地址。操作系统根据异常原因采取操作，对于未定义指令、硬件错误或者算数溢出，操作系统通常终止程序并返回异常原因。对于I&#x2F;O设备请求或者系统调用，操作系统保存程序状态，执行期望任务，待完成后重新载入任务并继续执行。对于I&#x2F;O请求，操作系统会先执行其他程序，待I&#x2F;O请求返回后再执行当前程序。缺页和TLB异常是经常遇到的，将在后面的文章中讨论。&lt;&#x2F;p&gt;">
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/PersonalBlog/tags/Computer-Architecture/" rel="tag"># Computer Architecture</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/PersonalBlog/2021/09/06/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3/" rel="prev" title="软硬件接口">
+      <i class="fa fa-chevron-left"></i> 软硬件接口
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%B5%81%E6%B0%B4%E7%BA%BF%E7%AE%80%E4%BB%8B"><span class="nav-number">1.</span> <span class="nav-text">流水线简介</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%86%92%E9%99%A9%EF%BC%9A%E7%BB%93%E6%9E%84%E5%86%92%E9%99%A9"><span class="nav-number">2.</span> <span class="nav-text">流水线冒险：结构冒险</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%86%92%E9%99%A9%EF%BC%9A%E6%95%B0%E6%8D%AE%E5%86%92%E9%99%A9"><span class="nav-number">3.</span> <span class="nav-text">流水线冒险：数据冒险</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%95%B0%E6%8D%AE%E5%86%92%E9%99%A9%EF%BC%9A%E6%97%81%E8%B7%AF"><span class="nav-number">3.1.</span> <span class="nav-text">数据冒险：旁路</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%95%B0%E6%8D%AE%E5%86%92%E9%99%A9%EF%BC%9A%E9%98%BB%E5%A1%9E"><span class="nav-number">3.2.</span> <span class="nav-text">数据冒险：阻塞</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">Jonathan</p>
+  <div class="site-description" itemprop="description">Learning, recording and sharing</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/PersonalBlog/archives/">
+        
+          <span class="site-state-item-count">2</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-tags">
+        <span class="site-state-item-count">2</span>
+        <span class="site-state-item-name">标签</span>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2021</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">Jonathan</span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item-icon">
+      <i class="fa fa-chart-area"></i>
+    </span>
+    <span title="站点总字数">3k</span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item-icon">
+      <i class="fa fa-coffee"></i>
+    </span>
+    <span title="站点阅读时长">2 分钟</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/PersonalBlog/lib/anime.min.js"></script>
+  <script src="/PersonalBlog/lib/velocity/velocity.min.js"></script>
+  <script src="/PersonalBlog/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/PersonalBlog/js/utils.js"></script>
+
+<script src="/PersonalBlog/js/motion.js"></script>
+
+
+<script src="/PersonalBlog/js/schemes/pisces.js"></script>
+
+
+<script src="/PersonalBlog/js/next-boot.js"></script>
+
+
+  <script defer src="//cdn.jsdelivr.net/gh/theme-next/theme-next-three@1/three.min.js"></script>
+    <script defer src="//cdn.jsdelivr.net/gh/theme-next/theme-next-three@1/three-waves.min.js"></script>
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'EsDDl2fdNT4I9Y6AMxoQ3kbx-gzGzoHsz',
+      appKey     : '7B5YVxUX2S7SoD4XOYn4hVPI',
+      placeholder: "Please leave messages here.",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : '' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : ''
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
