@@ -33,7 +33,7 @@
 <meta property="og:image" content="https://liuerhei.github.io/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/%E6%B5%81%E6%B0%B4%E7%BA%BF%E9%80%9A%E8%B7%AF-220.jpg">
 <meta property="og:image" content="https://liuerhei.github.io/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/%E5%BC%82%E5%B8%B8%E6%B5%81%E6%B0%B4%E7%BA%BF%E9%80%9A%E8%B7%AF-223.jpg">
 <meta property="article:published_time" content="2021-09-20T03:10:38.000Z">
-<meta property="article:modified_time" content="2021-09-21T15:52:37.000Z">
+<meta property="article:modified_time" content="2021-09-21T16:00:04.000Z">
 <meta property="article:author" content="Jonathan">
 <meta property="article:tag" content="Computer Architecture">
 <meta name="twitter:card" content="summary">
@@ -52,7 +52,7 @@
   };
 </script>
 
-  <title>软硬件接口: 流水线小结 | Jonthan's blog</title>
+  <title>软硬件接口: 流水线小结 | Jonthan's blog</title><meta name="robots" content="noindex">
   
 
 
@@ -192,7 +192,7 @@
                   <i class="far fa-calendar-check"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2021-09-21 23:52:37" itemprop="dateModified" datetime="2021-09-21T23:52:37+08:00">2021-09-21</time>
+                <time title="修改时间：2021-09-22 00:00:04" itemprop="dateModified" datetime="2021-09-22T00:00:04+08:00">2021-09-22</time>
               </span>
 
           
@@ -318,7 +318,7 @@
 <p>上述的过程中，我们可以看到寄存器重命名的影子。在发射指令时，它首先被复制到功能单元的保留站，如果操作数在寄存器堆或重排序缓冲区中可用，那么它的操作数被立即发射到保留站中。在所有操作数和执行单元可用之前，指令一直在保留站中。如果指令已经发射，那么和它操作数对应的寄存器堆副本就可以清理，此时可以更新该寄存器的副本。如果操作数不在寄存器堆或者重排序缓冲区，那么它可能是某个功能单元的输出，硬件会帮助定位该功能单元，待产生结果时直接复制到保留站中。</p>
 <p>重排序缓冲区就是保证指令正确执行的重要部件，虽然保留站中的指令是乱序执行（操作数就位，功能单元空闲就可以执行），但提交单元会按照取指发射顺序将结果写回寄存器堆和存储器。这种方案被称为乱序执行，顺序提交。这样当异常发生时，只有这条指令前的操作可以更新。目前所有的动态多发射处理器都采用顺序提交。</p>
 <p>相较于静态多发射，动态多发射可以更好地处理Cache缺失等无法提前预知的阻塞。另外如果处理器采用动态分支预测，动态多发射可以取得更大的并行度。实际上动态调度经常和硬件预测相结合，尤其是分支预测。通过硬件的预测结果，动态多发射处理器可以在推测方向上执行，并且在指令提交前确认预测结果。这样可以充分利用流水线。</p>
-
+<!-- flag of hidden posts -->
     </div>
 
     
@@ -334,13 +334,6 @@
 
 
         
-    <div class="post-nav">
-      <div class="post-nav-item">
-    <a href="/2021/09/06/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3/" rel="prev" title="软硬件接口">
-      <i class="fa fa-chevron-left"></i> 软硬件接口
-    </a></div>
-      <div class="post-nav-item"></div>
-    </div>
       </footer>
     
   </article>
@@ -412,12 +405,12 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">2</span>
+          <span class="site-state-item-count">1</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
       <div class="site-state-item site-state-tags">
-        <span class="site-state-item-count">2</span>
+        <span class="site-state-item-count">1</span>
         <span class="site-state-item-name">标签</span>
       </div>
   </nav>
@@ -453,12 +446,12 @@
     <span class="post-meta-item-icon">
       <i class="fa fa-chart-area"></i>
     </span>
-    <span title="站点总字数">7k</span>
+    <span title="站点总字数">0k</span>
     <span class="post-meta-divider">|</span>
     <span class="post-meta-item-icon">
       <i class="fa fa-coffee"></i>
     </span>
-    <span title="站点阅读时长">6 分钟</span>
+    <span title="站点阅读时长">1 分钟</span>
 </div>
   <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
   </div>
