@@ -14,30 +14,34 @@
 
 <link rel="stylesheet" href="//fonts.googleapis.com/css?family=Monda:300,300italic,400,400italic,700,700italic&display=swap&subset=latin,latin-ext">
 <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5/css/all.min.css">
+  <link rel="stylesheet" href="//cdn.jsdelivr.net/gh/fancyapps/fancybox@3/dist/jquery.fancybox.min.css">
 
 <script id="hexo-configurations">
     var NexT = window.NexT || {};
-    var CONFIG = {"hostname":"liuerhei.github.io","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"right","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":true},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":false,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+    var CONFIG = {"hostname":"liuerhei.github.io","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"right","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":true},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":true,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":false,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
   </script>
 
-  <meta name="description" content="聊到《软硬件接口》，就不得不提流水线。作为实现指令级并行的一种方式，流水线通过复用硬件部件来增加指令的吞吐，在计算机系统结构中发挥着巨大作用。通过切分执行指令的步骤，可以实现多级流水，尽可能挖掘指令级并行的可能。五级流水线是经典流水线之一，本文以以MIPS指令集的五级流水线为例，尝试分析流水线设计中遇到的结构冒险、数据冒险及控制冒险等问题及解决方案。希望那个可以通过学习流水线的基本原理，对计算机的">
+  <meta name="description" content="p.content {     color:orange;     border-bottom: 1px solid #d9d9d9;     display: inline-block;     color: #999;     padding: 2px;&quot;  聊到《软硬件接口》，就不得不提流水线。作为实现指令级并行的一种方式，流水线通过复用硬件部件来增加指令的吞吐，在计算机系统结构中发挥着巨">
 <meta property="og:type" content="article">
 <meta property="og:title" content="软硬件接口: 流水线小结">
 <meta property="og:url" content="https://liuerhei.github.io/PersonalBlog/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/index.html">
 <meta property="og:site_name" content="Jonthan&#39;s blog">
-<meta property="og:description" content="聊到《软硬件接口》，就不得不提流水线。作为实现指令级并行的一种方式，流水线通过复用硬件部件来增加指令的吞吐，在计算机系统结构中发挥着巨大作用。通过切分执行指令的步骤，可以实现多级流水，尽可能挖掘指令级并行的可能。五级流水线是经典流水线之一，本文以以MIPS指令集的五级流水线为例，尝试分析流水线设计中遇到的结构冒险、数据冒险及控制冒险等问题及解决方案。希望那个可以通过学习流水线的基本原理，对计算机的">
+<meta property="og:description" content="p.content {     color:orange;     border-bottom: 1px solid #d9d9d9;     display: inline-block;     color: #999;     padding: 2px;&quot;  聊到《软硬件接口》，就不得不提流水线。作为实现指令级并行的一种方式，流水线通过复用硬件部件来增加指令的吞吐，在计算机系统结构中发挥着巨">
 <meta property="og:locale" content="zh_CN">
-<meta property="og:image" content="https://liuerhei.github.io/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/%E6%B5%81%E6%B0%B4%E7%BA%BF%E9%80%9A%E8%B7%AF-205.jpg">
-<meta property="og:image" content="https://liuerhei.github.io/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/%E6%95%B0%E6%8D%AE%E5%86%92%E9%99%A9%E9%80%9A%E8%B7%AF-211.jpg">
-<meta property="og:image" content="https://liuerhei.github.io/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/%E6%95%B0%E6%8D%AE%E5%86%92%E9%99%A9%E9%80%9A%E8%B7%AF-214.jpg">
-<meta property="og:image" content="https://liuerhei.github.io/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/%E6%B5%81%E6%B0%B4%E7%BA%BF%E9%80%9A%E8%B7%AF-220.jpg">
-<meta property="og:image" content="https://liuerhei.github.io/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/%E5%BC%82%E5%B8%B8%E6%B5%81%E6%B0%B4%E7%BA%BF%E9%80%9A%E8%B7%AF-223.jpg">
+<meta property="og:image" content="https://liuerhei.github.io/PersonalBlog/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/picture1.png">
+<meta property="og:image" content="https://liuerhei.github.io/PersonalBlog/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/picture2.png">
+<meta property="og:image" content="https://liuerhei.github.io/PersonalBlog/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/picture3.png">
+<meta property="og:image" content="https://liuerhei.github.io/PersonalBlog/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/picture4.png">
+<meta property="og:image" content="https://liuerhei.github.io/PersonalBlog/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/picture5.png">
+<meta property="og:image" content="https://liuerhei.github.io/PersonalBlog/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/picture6.png">
+<meta property="og:image" content="https://liuerhei.github.io/PersonalBlog/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/picture7.png">
+<meta property="og:image" content="https://liuerhei.github.io/PersonalBlog/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/picture8.png">
 <meta property="article:published_time" content="2021-09-20T03:10:38.000Z">
-<meta property="article:modified_time" content="2021-09-21T16:00:04.000Z">
+<meta property="article:modified_time" content="2021-09-24T13:57:58.000Z">
 <meta property="article:author" content="Jonathan">
 <meta property="article:tag" content="Computer Architecture">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:image" content="https://liuerhei.github.io/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/%E6%B5%81%E6%B0%B4%E7%BA%BF%E9%80%9A%E8%B7%AF-205.jpg">
+<meta name="twitter:image" content="https://liuerhei.github.io/PersonalBlog/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/picture1.png">
 
 <link rel="canonical" href="https://liuerhei.github.io/PersonalBlog/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/">
 
@@ -52,7 +56,7 @@
   };
 </script>
 
-  <title>软硬件接口: 流水线小结 | Jonthan's blog</title><meta name="robots" content="noindex">
+  <title>软硬件接口: 流水线小结 | Jonthan's blog</title>
   
 
 
@@ -192,7 +196,7 @@
                   <i class="far fa-calendar-check"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2021-09-22 00:00:04" itemprop="dateModified" datetime="2021-09-22T00:00:04+08:00">2021-09-22</time>
+                <time title="修改时间：2021-09-24 21:57:58" itemprop="dateModified" datetime="2021-09-24T21:57:58+08:00">2021-09-24</time>
               </span>
 
           
@@ -202,13 +206,27 @@
               </span>
               <span class="post-meta-item-text">阅读次数：</span>
               <span id="busuanzi_value_page_pv"></span>
-            </span><br>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  <br>
             <span class="post-meta-item" title="本文字数">
               <span class="post-meta-item-icon">
                 <i class="far fa-file-word"></i>
               </span>
                 <span class="post-meta-item-text">本文字数：</span>
-              <span>6.5k</span>
+              <span>7k</span>
             </span>
             <span class="post-meta-item" title="阅读时长">
               <span class="post-meta-item-icon">
@@ -227,13 +245,22 @@
     <div class="post-body" itemprop="articleBody">
 
       
-        <p>聊到《软硬件接口》，就不得不提流水线。作为实现指令级并行的一种方式，流水线通过复用硬件部件来增加指令的吞吐，在计算机系统结构中发挥着巨大作用。通过切分执行指令的步骤，可以实现多级流水，尽可能挖掘指令级并行的可能。五级流水线是经典流水线之一，本文以以MIPS指令集的五级流水线为例，尝试分析流水线设计中遇到的结构冒险、数据冒险及控制冒险等问题及解决方案。希望那个可以通过学习流水线的基本原理，对计算机的了解更进一步，学习过程中难免有不到之处，如有错误，欢迎评论区指正。</p>
+        <style>
+p.content
+{
+    color:orange;
+    border-bottom: 1px solid #d9d9d9;
+    display: inline-block;
+    color: #999;
+    padding: 2px;"
+</style>
+<p>聊到《软硬件接口》，就不得不提流水线。作为实现指令级并行的一种方式，流水线通过复用硬件部件来增加指令的吞吐，在计算机系统结构中发挥着巨大作用。通过切分执行指令的步骤，可以实现多级流水，尽可能挖掘指令级并行的可能。五级流水线是经典流水线之一，本文以MIPS指令集的五级流水线为例，尝试分析流水线设计中遇到的结构冒险、数据冒险及控制冒险等问题及解决方案。希望那个可以通过学习流水线的基本原理，对计算机的了解更进一步，学习过程中难免有不到之处，如有错误，欢迎评论区指正。</p>
 <span id="more"></span>
 
 <h2 id="流水线简介"><a href="#流水线简介" class="headerlink" title="流水线简介"></a>流水线简介</h2><blockquote>
 <p>流水线是一种实现多条指令重叠执行的技术。</p>
 </blockquote>
-<p>日常生活中很多地方都在使用流水线技术，制造业的工厂、洗衣店、食堂打菜等等。流水线并没有加快单个流程的处理速。与之相反的，流水线的引入可能还会增加单个流程的处理时间。但流水线可以提升多个流程的平均处理速度，对于N级流水线来说，每一个阶段都可以新开启一个流程，最多可以同时运行N个流程。以5级流水线为例，4条指令的时间从串形的20单位时间降低为8单位时间。</p>
+<p>日常生活中很多地方都在使用流水线技术，制造业的工厂、洗衣店、食堂打菜等等。流水线并没有加快单个流程的处理速度。与之相反的，流水线的引入可能还会增加单个流程的处理时间。但流水线可以提升多个流程的平均处理速度，对于N级流水线来说，每一个阶段都可以新开启一个流程，最多可以同时运行N个流程。以5级流水线为例，4条指令的时间从串形的20单位时间降低为8单位时间。</p>
 <blockquote>
 <p>五级流水线一般分为以下五部分：</p>
 <ul>
@@ -244,8 +271,11 @@
 <li>写回：将结果写回寄存器</li>
 </ul>
 </blockquote>
-<p>为了简化问题，本文仅考虑取字(lw)、存字(sw)、加(add)、减(sub)、与(And)、或(or)、小于则置位(slt)和相等则分支(beq)。由于流水线复用数据通路中的各个部件，因此每个阶段需要流水线寄存器保留结果和相关的控制信号。例如译码／执行（ID/EX）寄存器需要保存数据存储的读写信号、是否写回寄存器堆等信号（后面会详细讲解流水线寄存器中的控制信号）。所以每条指令的中间结果和相关信息都随着指令执行阶段在流水线寄存器中依次传递。下图是支持流水线的数据通路，后面基于此进行分析。</p>
-<img src="/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/%E6%B5%81%E6%B0%B4%E7%BA%BF%E9%80%9A%E8%B7%AF-205.jpg" class="" title="五级流水线示意图，流水线后三级的控制信号是在译码阶段创建的，然后放入ID&#x2F;EX流水线寄存器">
+<p>为了简化问题，本文仅考虑取字(lw)、存字(sw)、加(add)、减(sub)、与(And)、或(or)、小于则置位(slt)和相等则分支(beq)。由于流水线复用数据通路中的各个部件，因此每个阶段需要流水线寄存器保留结果和相关的控制信号。例如译码／执行（ID/EX）寄存器需要保存数据存储的读写信号、是否写回寄存器堆等信号（后面会详细讲解流水线寄存器中的控制信号）。所以每条指令的中间结果和相关信息都随着指令执行阶段在流水线寄存器中依次传递。图1是支持流水线的数据通路，后面基于此进行分析。</p>
+<center>
+    <img src="./picture1.png" width="80%">
+    <p class="content">图1:五级流水线示意图</p>
+</center>
 
 <h2 id="流水线冒险：结构冒险"><a href="#流水线冒险：结构冒险" class="headerlink" title="流水线冒险：结构冒险"></a>流水线冒险：结构冒险</h2><p>我们熟知的流水线冒险有数据冒险和控制冒险，但结果冒险也是一种流水线冒险。如果数据通路中指令存储和数据存储共用一个通道，那么在第四个时钟周期就会发生结构冒险：第一条指令需要访存，第四条指令需要取指令。</p>
 <blockquote>
@@ -266,9 +296,12 @@
 <li>2.2 MEM/WB.RegisterRd = ID/EX.RegisterRt</li>
 </ul>
 <p>对于上面提到的第一条和第二条指令关于$2寄存器的数据冒险符合1.1条件。$2寄存器是sub指令的EX阶段的目标寄存器，同时是and指令在EX阶段需要使用的源寄存器。对于sub指令来说，EX段后$2寄存器的内容就已经在寄存器中了，如果我们新建一条数据通路，EX段ALU的源操作数可以直接数据通路中获取，那么1.1的数据冒险就可以解决。这就需要引入旁路控制单元。</p>
-<img src="/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/%E6%95%B0%E6%8D%AE%E5%86%92%E9%99%A9%E9%80%9A%E8%B7%AF-211.jpg" class="" title="通过旁路解决数据冒险的通路，旁路单元通过各个流水线寄存器生成ALU输入的多路选择器信号">
-<!-- <img class="[class names] 简易流水线通路-205.jpg [width] [height] &quot;图片测试&quot; &quot;简单流水线通路&quot;"> -->
-<p>在构建新的数据通路基础上，如上图所示。旁路控制单元通过检测数据冒险的条件，并生成相关的控制码（主要是决策数据从何处获取），进而解决部分数据冒险。例如针对EX冒险，可以通过下述代码来实现：</p>
+<div align="center">
+    <img src="./picture2.png" width="80%">
+    <p class="content">图2:通过旁路解决数据冒险</p>
+</div>
+
+<p>在构建新的数据通路基础上，如图2所示。旁路控制单元通过检测数据冒险的条件，并生成相关的控制码（主要是决策数据从何处获取），进而解决部分数据冒险。例如针对EX冒险，可以通过下述代码来实现：</p>
 <figure class="highlight plaintext"><figcaption><span>旁路单元检测EX段数据冒险</span></figcaption><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">if (EX/MEM.RegWrite and (EX/MEM.RegisterRd ≠ 0)</span><br><span class="line">and (EX/MEM.RegisterRd = ID/EX.RegisterRs))</span><br><span class="line">FowardA = 10</span><br><span class="line"></span><br><span class="line">if (EX/MEM.RegWrite and (EX/MEM.RegisterRd ≠ 0)</span><br><span class="line">and (EX/MEM.RegisterRd = ID/EX.RegisterRt))</span><br><span class="line">FowardB = 10</span><br></pre></td></tr></table></figure>
 
 <p>这里我们回到上面的例子。假设在第一个时钟周期执行sub指令，在第四个时钟周期，旁路单元检测到数据冒险。此时旁路控制单元将FowardA置为10，即图中ALU上方的多选器选择ALU的输出结果。通过旁路快速将sub指令的结果传送至ALU的输入。</p>
@@ -278,47 +311,68 @@
 <p>当一条指令试图读取上条装载指令读入的寄存器时，就无法使用旁路解决冒险了。这就需要冒险检测单元来阻塞流水线，它工作在ID级，这样就可以在装载指令译码阶段插入气泡，避免数据冒险。检测条件如下：</p>
 <figure class="highlight plaintext"><figcaption><span>冒险检测单元</span></figcaption><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">if (ID/EX.MemRead and （(ID/EX.RegisterRt = IF/ID.RegisterRs) or</span><br><span class="line">(ID/EX.RegisterRt = IF/ID.RegisterRt))</span><br><span class="line">stall the pipeline</span><br></pre></td></tr></table></figure>
 
-<p>插入气泡相当于流水线空转，但实际上流水线的部件仍在执行，只不过不保存结果，也不更新PC。前者仅需要将ID/EX流水线寄存器的EX、MEM和WB级的控制信号全部置为0，这样所有寄存器和存储器都不进行写操作，不会产生不良结果。后者需要保持PC和IF/ID寄存器，这样后续执行的仍是当前指令。加入冒险检测单元的流水线示意图如下所示。</p>
+<p>插入气泡相当于流水线空转，但实际上流水线的部件仍在执行，只不过不保存结果，也不更新PC。前者仅需要将ID/EX流水线寄存器的EX、MEM和WB级的控制信号全部置为0，这样所有寄存器和存储器都不进行写操作，不会产生不良结果。后者需要保持PC和IF/ID寄存器，这样后续执行的仍是当前指令。加入冒险检测单元的流水线如图3所示，在旁路的基础上，新增冒险检测单元（此处省略了立即数符号扩展和分支逻辑）。</p>
 <blockquote>
 <p>实际上，如果需要阻塞流水线的话，仅需要将ID/EX流水线寄存器中的RegWrite和MemWrite信号置为0就可以。</p>
 </blockquote>
-<img src="/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/%E6%95%B0%E6%8D%AE%E5%86%92%E9%99%A9%E9%80%9A%E8%B7%AF-214.jpg" class="" title="数据冒险通路示意图，在旁路的基础上，新增冒险检测单元（此处省略了立即数符号扩展和分支逻辑）">
+<div align="center">
+    <img src="./picture3.png" width="80%">
+    <p class="content">图3:数据冒险通路示意图</p>
+</div>
 
 <h2 id="流水线冒险：控制冒险"><a href="#流水线冒险：控制冒险" class="headerlink" title="流水线冒险：控制冒险"></a>流水线冒险：控制冒险</h2><blockquote>
-<p>控制冒险，也称为分支冒险，即取到的指令不是所需要的导致指令不能在预定的时钟周期内完成。<br>控制冒险相对容易理解，它们出现的概率要比数据冒险小的多，并且与采用旁路可以有效解决数据冒险相比，还没有有效办法可以解决控制冒险。对于控制冒险来说，首先需要缩短分支的延迟，所以需要将分支地址计算从EX级移到ID级。同时增加相等判断部件，例如将两个输入进行异或后各位取或。由于判断分支条件的操作数可能来自于EX/MEM或MEM/WB流水线寄存器。因此前置分支地址计算需要额外的旁路，同时数据可能在后面的阶段产生，因此可能存在数据冒险，需要阻塞流水线。优化后的流水线示意图如下所示。</p>
+<p>控制冒险，也称为分支冒险，即取到的指令不是所需要的导致指令不能在预定的时钟周期内完成。</p>
 </blockquote>
-<img src="/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/%E6%B5%81%E6%B0%B4%E7%BA%BF%E9%80%9A%E8%B7%AF-220.jpg" class="" title="最终的数据通路和控制逻辑图，没有额外标记ALUsrc等信息">
+<p>控制冒险相对容易理解，它们出现的概率要比数据冒险小的多，并且与采用旁路可以有效解决数据冒险相比，还没有有效办法可以解决控制冒险。对于控制冒险来说，首先需要缩短分支的延迟，所以需要将分支地址计算从EX级移到ID级。同时增加相等判断部件，例如将两个输入进行异或后各位取或。由于判断分支条件的操作数可能来自于EX/MEM或MEM/WB流水线寄存器。因此前置分支地址计算需要额外的旁路，同时数据可能在后面的阶段产生，因此可能存在数据冒险，需要阻塞流水线。优化后的流水线示意图如图4所示。</p>
+<div align="center">
+    <img src="./picture4.png" width="80%">
+    <p class="content">图4:控制冒险通路示意图（没有额外标记ALUsrc等信息）</p>
+</div>
 
-<h3 id="动态分支预测"><a href="#动态分支预测" class="headerlink" title="动态分支预测"></a>动态分支预测</h3><p>上述方案可以适当缩短分支的延迟，将分支预测错误的代价缩短到只有一条指令，就是分支执行时正在取的那条指令。除了缩短延迟外，可以在分支预测上做一些文章，例如预测分支结果。当预测正确时，可以有效提升流水线的效率，不过错误时需要清空流水线。对于更深的流水线来说，清空流水线代价比较大，多发射的分支代价也比较大。此外，编译器可以做分支预测，例如分支延迟时间槽，但随着流水线深度的增加和多发射技术的发展，延迟槽会带来一定的性能性能。所以可以引入新的硬件来支持。</p>
+<h3 id="动态分支预测"><a href="#动态分支预测" class="headerlink" title="动态分支预测"></a>动态分支预测</h3><p>上述方案可以适当缩短分支的延迟，将分支预测错误的代价缩短到只有一条指令，就是分支执行时正在取的那条指令。在此基础上，还可以在分支预测上做一些文章，例如预测分支结果。当预测正确时，可以有效提升流水线的效率，不过错误时需要清空流水线。对于阶段较多的流水线来说，清空流水线代价比较大，多发射的分支代价也比较大（后面会分析）。在早期流水线，由于阶段较少，可以使用分支延迟时间槽来提升流水线效率。但随着流水线深度增加，延迟时间槽很难被无关指令填满，能带来的性能提升有限，因此开始使用新的硬件来支持。</p>
 <blockquote>
 <p>一种策略是通过查找指令的地址观察上一次执行该指令时分支是否发生，如果上次执行时分支发生，就从上次分支发生的地方开始取新指令，这就是动态分支预测。</p>
 </blockquote>
 <p>分支预测缓存就是动态分支预测的一种实现方法，通过使用在IF级指令地址能否访问的小容量专用缓存实现，按照分支的地址地位索引，包含一位或多位数据来记录最近是否发生过分支。这里以两位预测来举例，如果分支跳转，那么预测位加一，反之减一。所以如果高位为1，预测分支发生，如果高位为0，预测分支不发生。这种方案一般称为饱和计数或者双模态预测器。</p>
-<p>饱和计数方案存在一定的局限性，例如一个分支指令每两次执行跳转一次，那将会一直预测不跳转。所以Yale Patt在90年代提出了自适应预测，简单的说就是变成两级饱和计数。第一级是分支历史情况，第二级是模式历史表。分支历史情况同时也是模式历史表的索引，所以对于每两次跳转一次的分支来说，01在发生两次后就会被预测为跳转，同理00和10也会被预测为不跳转。关于分支跳转指令具体可以参考<a target="_blank" rel="noopener" href="https://zh.wikipedia.org/wiki/%E5%88%86%E6%94%AF%E9%A0%90%E6%B8%AC%E5%99%A8">链接</a></p>
+<p>饱和计数方案存在一定的局限性，例如一个分支指令每两次执行跳转一次，那将会一直预测不跳转。所以Yale Patt在90年代提出了自适应预测，简单的说就是变成两级饱和计数。如图5所示，第一级是分支历史情况，第二级是模式历史表。分支历史情况同时也是模式历史表的索引，所以对于每两次跳转一次的分支来说，01在发生两次后就会被预测为跳转，同理00和10也会被预测为不跳转。关于分支跳转指令具体可以参考<a target="_blank" rel="noopener" href="https://zh.wikipedia.org/wiki/%E5%88%86%E6%94%AF%E9%A0%90%E6%B8%AC%E5%99%A8">链接</a>。</p>
+<div align="center">
+    <img src="./picture5.png" width="60%">
+    <p class="content">图5:两级饱和计数示意图</p>
+</div>
+
 <h2 id="异常"><a href="#异常" class="headerlink" title="异常"></a>异常</h2><p>在控制冒险中我们讨论了分支，此外还有异常和中断。在x86中异常和中断统一称为中断，不过有些体系结构将控制流中任何意外的改变成为异常，将外部引起的称为中断。对于异常的处理，一般通过异常程序计数器（EPC）保存异常指令的地址，然后将控制权交给操作系统，操作系统从EPC中获取指令地址，通过状态寄存器来获取异常原因并执行相关操作，操作完成后可以决定继续执行还是结束程序。另外一种方法是向量中断，针对不同的异常定义不同的向量地址，出现异常时将控制权被转移到有异常原因决定的地址处。</p>
-<p>实际上，异常可以看作是另一种形式的控制冒险。如果产生异常，我们也需要阻塞流水线，所以控制单元新增ID.flush信号，和冒险检测单元的输出相或决定是否ID级指令。此外新增EX.flush来清理EX级指令。这里我们假设使用状态寄存器来处理异常，异常处理地址是80000180<sub>16，</sub>所以PC的多选器新增异常处理地址的输入。下图是调整后的数据通路。如果指令在执行阶段发生溢出触发异常，那么控制单元生成EX.flush信号避免指令在WB段将结果写回寄存器堆。</p>
-<img src="/2021/09/20/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3-%E6%B5%81%E6%B0%B4%E7%BA%BF%E5%B0%8F%E7%BB%93/%E5%BC%82%E5%B8%B8%E6%B5%81%E6%B0%B4%E7%BA%BF%E9%80%9A%E8%B7%AF-223.jpg" class="" title="处理异常的数据通路和控制逻辑图。新增刷新信号和PC多选器输入，图中未标明ALU溢出信号，其也为控制单元的输入。">
+<p>实际上，异常可以看作是另一种形式的控制冒险。如果产生异常，我们也需要阻塞流水线，所以控制单元新增ID.flush信号，和冒险检测单元的输出相或决定是否清理ID级指令。此外新增EX.flush来清理EX级指令。这里我们假设使用状态寄存器来处理异常，异常处理地址是80000180<sub>16，</sub>所以PC的多选器新增异常处理地址的输入。图6是调整后的数据通路，新增刷新信号和PC多选器输入，图中未标明ALU溢出信号，其也为控制单元的输入。如果指令在执行阶段发生溢出触发异常，那么控制单元生成EX.flush信号避免指令在WB段将结果写回寄存器堆。</p>
+<div align="center">
+    <img src="./picture6.png" width="80%">
+    <p class="content">图6:处理异常的数据通路和控制逻辑图</p>
+</div>
 
 <p>硬件和操作系统协同才可以正确处理异常，如果流水线中的多条指令同时触发异常，会根据优先级依次处理，这里就不展开讨论。异常处理一般是由硬件暂停触发异常的指令，同时执行完该指令前的所有指令，清楚该指令后的所有指令，并设置状态寄存器，指令地址保存在EPC中，跳转到异常处理地址。操作系统根据异常原因采取操作，对于未定义指令、硬件错误或者算数溢出，操作系统通常终止程序并返回异常原因。对于I/O设备请求或者系统调用，操作系统保存程序状态，执行期望任务，待完成后重新载入任务并继续执行。对于I/O请求，操作系统会先执行其他程序，待I/O请求返回后再执行当前程序。缺页和TLB异常是经常遇到的，将在后面的文章中讨论。</p>
-<h2 id="指令级并行"><a href="#指令级并行" class="headerlink" title="指令级并行"></a>指令级并行</h2><p>流水线挖掘了指令间潜在的并行性，这种技术被称为指令级并行(instruction-level parallelism, ILP)。有两种方法增加潜在的指令间并行度，一个是增加流水线的深度，这样可以同时运行更多条指令。但是流水线的深度并不是越深越好，一方面分支预测错误等问题的代价会变得更大，数据通路更复杂。另一方面会带来更大的延迟。流水线间是通过锁存器来连接，我们前面的讨论将读操作视为零延迟，但实际上电信号传入传出也需要时间，如果每级流水线的逻辑耗时少于锁存器的耗时，那么这样的流水线就没有意义<!-- （这里参考了大佬们的回答(<https://www.zhihu.com/question/26289306>） -->。另一种增加指令并行度的方法是多发射，也就是复制数据通路的部件，每个指令周期执行多条指令。实现多发射处理器有两种方式：由编译器决定的静态多发射和硬件决定的动态多发射。</p>
+<h2 id="指令级并行"><a href="#指令级并行" class="headerlink" title="指令级并行"></a>指令级并行</h2><p>流水线挖掘了指令间潜在的并行性，这种技术被称为指令级并行(instruction-level parallelism, ILP)。有两种方法增加潜在的指令间并行度，一个是增加流水线的深度，这样可以同时运行更多条指令。但是流水线的深度并不是越深越好，一方面分支预测错误等问题的代价会变得更大，数据通路更复杂。另一方面会带来更大的延迟。流水线间是通过锁存器来连接，我们前面的讨论将读操作视为零延迟，但实际上电信号传入传出也需要时间，如果每级流水线的逻辑耗时少于锁存器的耗时，那么这样的流水线就没有意义，这里参考了大佬们的<a target="_blank" rel="noopener" href="https://www.zhihu.com/question/26289306">回答</a>。另一种增加指令并行度的方法是多发射，也就是复制数据通路的部件，每个指令周期执行多条指令。实现多发射处理器有两种方式：由编译器决定的静态多发射和硬件决定的动态多发射。</p>
 <p>实际上推测也可以增加指令的并行度，前面我们提到的分支预测就是通过推测避免流水线阻塞。此外编译器在生成指令序列的时候，对于相邻的store和load指令，如果判断两者不存在数据依赖，可以将load指令提前，这样后面依赖它的指令就可以少一个时钟周期的阻塞（不考虑旁路的情况下）。推测可以由编译器或硬件来完成。对软件来说，需要插入额外的指令检查推测的正确性并提供专门的修复例程供推测失败时修复。而硬件会缓存推测结果直至确认推测结果。如果正确，缓存结果写回寄寄存器堆和存储器，错误则清除缓存并重新执行正确的指令序列。</p>
 <blockquote>
 <p>发射包：在一个时钟周期内发射的多条指令的集合。可以由编译器静态生成，或者硬件动态生成。</p>
 </blockquote>
 <h3 id="静态多发射处理器"><a href="#静态多发射处理器" class="headerlink" title="静态多发射处理器"></a>静态多发射处理器</h3><p>所有的静态多发射处理器都使用编译器封装多条指令并处理冒险。在给定的一个时钟周期内，静态多发射处理器可以发射多条指令，即一个发射包。由于静态多发射处理器发射包的长度有所限制，所以可以将发射包类比成一条包含多个操作的指令，即超长指令字(Very Long Instruction Word, VLIW)。</p>
-<p>静态多发射可能会对发射包中的指令有要求，例如静态双发射的发射包中一条是ALU操作或分支，另一条是装载指令或存储指令。同时针对潜在的数据冒险，有些多发射处理器的设计中，编译器通过插入气泡或者调整指令顺序来避免所有冒险。在另外一些设计中，编译器仅保证发射包中不存在冒险，由硬件负责检测处理发射包间的冒险。但无论是哪种设计，都可能存在冒险进而阻塞流水线。这里我们假设使用后者来实现静态双发射处理器。下图是需要新增的部件。</p>
-<!-- 待插入P229图片。 -->
+<p>静态多发射可能会对发射包中的指令有要求，例如静态双发射的发射包中一条是ALU操作或分支，另一条是装载指令或存储指令。同时针对潜在的数据冒险，有些多发射处理器的设计中，编译器通过插入气泡或者调整指令顺序来避免所有冒险。在另外一些设计中，编译器仅保证发射包中不存在冒险，由硬件负责检测处理发射包间的冒险。但无论是哪种设计，都可能存在冒险进而阻塞流水线。这里我们假设使用后者来实现静态双发射处理器。需要新增的部件如图7所示，双发射所需的额外硬件用蓝色线表示，主要有指令寄存器的额外32位输出，寄存器堆额外的两个读端口和一个写端口，同时包括额外的ALU。由于上面提到发射包对指令的限制，这里可以限制其中一个ALU仅做地址计算。</p>
+<div align="center">
+    <img src="./picture7.png" width="80%">
+    <p  class="content">图7:静态双发射的数据通路</p>
+</div>
 
 <p>双发射处理器理论上可以将性能提高两倍，但这需要有足够的可以重叠的指令序列。例如五级流水线中，依赖装载指令的下条指令需要一个时钟周期的延迟，EX阶段通过旁路获取装载指令的MEM／WB.RegisterRd的值。这就意味着双发射流水线中有两条指令需要一个时钟周期的延迟，即使其中一条与装载指令无关。所以静态多发射对编译器的要求比较高。</p>
 <p>这里就不得不提到循环展开，通过复制循环体使得不同循环体的指令可能出在同一个发射包中。循环展开时，编译器可能会引入临时寄存器来解决反相关，这就是寄存器重命名。通过重命名可以消除虚假的数据依赖，避免潜在的数据冒险。</p>
 <h3 id="动态多发射处理器"><a href="#动态多发射处理器" class="headerlink" title="动态多发射处理器"></a>动态多发射处理器</h3><p>动态多发射处理器也被称作超标量处理器。虽然是由硬件来决定多发射，不过动态多发射处理器获取好的性能仍然需要编译器对指令的调度。不过指令执行的正确性由硬件保证，和指令发射速率及处理器的流水线结构无关。但在一些VLIW的设计中并非如此，在不同的处理上运行的代码可能需要重新编译。在另外一些静态多发射处理器上代码可以正确执行，不过效率会差很多。</p>
-<p>实际上许多超标量处理器扩展了基本的动态发射决策，将动态流水线调度也包含在内。在这种处理器中，流水线可以简单划分为三个主要单元：取指和发射单元、多个功能单元和一个提交单元。下图是这种模型的描述。第一单元译码后将指令发射到对应的功能单元。每个功能单元都有自己的缓冲区（保留站），用来保存操作和操作数。当缓冲区包含了所有的操作数，并且功能单元空闲，那么就可以计算该操作的结果。得到结果后，将其发送到相关的保留站和提交单元。提交单元缓存结果，并且在确认正确后将结果写回寄存器堆和存储器。提交单元的缓冲区一般称为重排序缓冲区，它可以用来提供操作数，类似于流水线的旁路。</p>
-<!-- 待插入232的图片 -->
+<p>实际上许多超标量处理器扩展了基本的动态发射决策，将动态流水线调度也包含在内。在这种处理器中，流水线可以简单划分为三个主要单元：取指和发射单元、多个功能单元和一个提交单元。图8是这种模型的描述。第一单元译码后将指令发射到对应的功能单元。每个功能单元都有自己的缓冲区（保留站），用来保存操作和操作数。当缓冲区包含了所有的操作数，并且功能单元空闲，那么就可以计算该操作的结果。得到结果后，将其发送到相关的保留站和提交单元。提交单元缓存结果，并且在确认正确后将结果写回寄存器堆和存储器。提交单元的缓冲区一般称为重排序缓冲区，它可以用来提供操作数，类似于流水线的旁路。</p>
+<div align="center">
+    <img src="./picture8.png" width="60%">
+    <p class="content">图8:动态调度流水线中的三个主要单元</p>
+</div>
 
 <p>上述的过程中，我们可以看到寄存器重命名的影子。在发射指令时，它首先被复制到功能单元的保留站，如果操作数在寄存器堆或重排序缓冲区中可用，那么它的操作数被立即发射到保留站中。在所有操作数和执行单元可用之前，指令一直在保留站中。如果指令已经发射，那么和它操作数对应的寄存器堆副本就可以清理，此时可以更新该寄存器的副本。如果操作数不在寄存器堆或者重排序缓冲区，那么它可能是某个功能单元的输出，硬件会帮助定位该功能单元，待产生结果时直接复制到保留站中。</p>
 <p>重排序缓冲区就是保证指令正确执行的重要部件，虽然保留站中的指令是乱序执行（操作数就位，功能单元空闲就可以执行），但提交单元会按照取指发射顺序将结果写回寄存器堆和存储器。这种方案被称为乱序执行，顺序提交。这样当异常发生时，只有这条指令前的操作可以更新。目前所有的动态多发射处理器都采用顺序提交。</p>
-<p>相较于静态多发射，动态多发射可以更好地处理Cache缺失等无法提前预知的阻塞。另外如果处理器采用动态分支预测，动态多发射可以取得更大的并行度。实际上动态调度经常和硬件预测相结合，尤其是分支预测。通过硬件的预测结果，动态多发射处理器可以在推测方向上执行，并且在指令提交前确认预测结果。这样可以充分利用流水线。</p>
-<!-- flag of hidden posts -->
+<p>相较于静态多发射，动态多发射可以更好地处理Cache缺失等无法提前预知的阻塞。另外如果处理器采用动态分支预测，动态多发射可以取得更大的并行度。实际上动态调度经常和硬件预测相结合，尤其是分支预测。通过硬件的预测结果，动态多发射处理器可以在推测方向上执行，并且在指令提交前确认预测结果。这样可以充分利用流水线。关于动态多发射还有一个经典算法–Tomasulo 算法，后面将会用一篇文章单独来介绍。</p>
+
     </div>
 
     
@@ -334,6 +388,13 @@
 
 
         
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2021/09/06/%E8%BD%AF%E7%A1%AC%E4%BB%B6%E6%8E%A5%E5%8F%A3/" rel="prev" title="软硬件接口">
+      <i class="fa fa-chevron-left"></i> 软硬件接口
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
       </footer>
     
   </article>
@@ -345,6 +406,7 @@
 
           </div>
           
+    <div class="comments" id="valine-comments"></div>
 
 <script>
   window.addEventListener('tabs:register', () => {
@@ -405,12 +467,12 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">1</span>
+          <span class="site-state-item-count">2</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
       <div class="site-state-item site-state-tags">
-        <span class="site-state-item-count">1</span>
+        <span class="site-state-item-count">2</span>
         <span class="site-state-item-name">标签</span>
       </div>
   </nav>
@@ -446,12 +508,12 @@
     <span class="post-meta-item-icon">
       <i class="fa fa-chart-area"></i>
     </span>
-    <span title="站点总字数">0k</span>
+    <span title="站点总字数">7k</span>
     <span class="post-meta-divider">|</span>
     <span class="post-meta-item-icon">
       <i class="fa fa-coffee"></i>
     </span>
-    <span title="站点阅读时长">1 分钟</span>
+    <span title="站点阅读时长">6 分钟</span>
 </div>
   <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
   </div>
@@ -491,6 +553,8 @@
 
   
   <script src="/lib/anime.min.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/jquery@3/dist/jquery.min.js"></script>
+  <script src="//cdn.jsdelivr.net/gh/fancyapps/fancybox@3/dist/jquery.fancybox.min.js"></script>
 
 <script src="/js/utils.js"></script>
 
@@ -524,6 +588,35 @@
   
 
   
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail,link';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'EsDDl2fdNT4I9Y6AMxoQ3kbx-gzGzoHsz',
+      appKey     : '7B5YVxUX2S7SoD4XOYn4hVPI',
+      placeholder: "Please leave messages here.",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : '' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : ''
+    });
+  }, window.Valine);
+});
+</script>
 
 </body>
 </html>
